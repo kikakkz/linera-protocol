@@ -6,9 +6,9 @@ use std::{collections::BTreeMap, sync::Arc};
 use async_trait::async_trait;
 use futures::Future;
 use linera_base::{
-    crypto::KeyPair,
+    crypto::{CryptoHash, KeyPair, PublicKey},
     data_types::{BlockHeight, Timestamp},
-    identifiers::{Account, ChainId},
+    identifiers::{Account, ChainId, MessageId},
     ownership::ChainOwnership,
     time::{Duration, Instant},
 };
@@ -52,7 +52,6 @@ use {
 #[cfg(feature = "fs")]
 use {
     linera_base::{
-        crypto::CryptoHash,
         data_types::{BlobBytes, Bytecode},
         identifiers::BytecodeId,
     },
@@ -278,6 +277,8 @@ where
                     next_block_height: BlockHeight::ZERO,
                     pending_block: None,
                     pending_blobs: BTreeMap::new(),
+                    creation_message_id: None,
+                    creation_certificate_hash: None,
                 })
             })
             .await?;

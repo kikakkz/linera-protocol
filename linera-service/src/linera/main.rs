@@ -13,7 +13,7 @@ use chrono::Utc;
 use colored::Colorize;
 use futures::{lock::Mutex, FutureExt as _, StreamExt};
 use linera_base::{
-    crypto::{CryptoHash, CryptoRng, PublicKey},
+    crypto::{CryptoHash, CryptoRng, KeyPair, PublicKey},
     data_types::{ApplicationPermissions, Timestamp},
     identifiers::{ChainDescription, ChainId, MessageId, Owner},
     ownership::ChainOwnership,
@@ -1015,8 +1015,10 @@ impl Runnable for Job {
                 Self::assign_new_chain_to_key(
                     chain_id,
                     message_id,
+                    None,
                     storage,
-                    key,
+                    Some(key),
+                    None,
                     None,
                     &mut context,
                 )
@@ -1121,8 +1123,10 @@ impl Runnable for Job {
                 Self::assign_new_chain_to_key(
                     outcome.chain_id,
                     outcome.message_id,
+                    Some(outcome.certificate_hash),
                     storage.clone(),
-                    public_key,
+                    Some(public_key),
+                    None,
                     Some(validators),
                     &mut context,
                 )
@@ -1138,6 +1142,41 @@ impl Runnable for Job {
                     .await??;
             }
 
+            Wallet(WalletCommand::Rebuild) => {
+                let genesis_config = context.wallet().genesis_config();
+                let validators = genesis_config.validators();
+                let chain_ids = context.wallet().chain_ids();
+
+                for chain_id in &chain_ids {
+                    match context.wallet().get(*chain_id) {
+                        Some(chain) => {
+                            info!("Rebuild chain {}", chain_id);
+                            if chain.creation_message_id.is_none() {
+                                continue;
+                            }
+                            if chain.key_pair.is_none() {
+                                continue;
+                            }
+                            Self::assign_new_chain_to_key(
+                                chain.chain_id,
+                                chain.creation_message_id.unwrap(),
+                                chain.creation_certificate_hash,
+                                storage.clone(),
+                                None,
+                                Some(chain.key_pair.as_ref().unwrap().copy()),
+                                Some(validators.clone()),
+                                &mut context,
+                            )
+                            .await?;
+                            let chain_client = context.make_chain_client(*chain_id)?;
+                            info!("Synchronizing chain {}", chain_id);
+                            chain_client.synchronize_from_validators().await?;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
             CreateGenesisConfig { .. } | Keygen | Net(_) | Wallet(_) | HelpMarkdown => {
                 unreachable!()
             }
@@ -1150,8 +1189,10 @@ impl Job {
     async fn assign_new_chain_to_key<S>(
         chain_id: ChainId,
         message_id: MessageId,
+        certificate_hash: Option<CryptoHash>,
         storage: S,
-        public_key: PublicKey,
+        public_key: Option<PublicKey>,
+        key_pair: Option<KeyPair>,
         validators: Option<Vec<(ValidatorName, String)>>,
         context: &mut ClientContext<S, impl Persist<Target = Wallet>>,
     ) -> anyhow::Result<()>
@@ -1216,15 +1257,39 @@ impl Job {
                 Please make sure you are connecting to a genuine faucet."
             );
         };
-        anyhow::ensure!(
-            config.ownership.verify_owner(&Owner::from(public_key)) == Some(public_key),
-            "The chain with the ID returned by the faucet is not owned by you. \
-            Please make sure you are connecting to a genuine faucet."
-        );
+        if public_key.is_some() {
+            anyhow::ensure!(
+                config
+                    .ownership
+                    .verify_owner(&Owner::from(public_key.unwrap()))
+                    == public_key,
+                "The chain with the ID returned by the faucet is not owned by you. \
+                Please make sure you are connecting to a genuine faucet."
+            );
+        }
+
         context
             .wallet_mut()
             .mutate(|w| {
-                w.assign_new_chain_to_key(public_key, chain_id, executed_block.block.timestamp)
+                if key_pair.is_some() {
+                    w.assign_new_chain_to_key_pair(
+                        key_pair.unwrap(),
+                        chain_id,
+                        executed_block.block.timestamp,
+                        message_id,
+                        certificate_hash,
+                    )
+                } else if public_key.is_some() {
+                    w.assign_new_chain_to_key(
+                        public_key.unwrap(),
+                        chain_id,
+                        executed_block.block.timestamp,
+                        message_id,
+                        certificate_hash,
+                    )
+                } else {
+                    Ok(())
+                }
             })
             .await?
             .context("could not assign the new chain")?;
@@ -1645,6 +1710,12 @@ Make sure to use a Linera client compatible with this network.
                     );
                     options.run_with_storage(Job(options.clone())).await??;
                 }
+                Ok(())
+            }
+
+            WalletCommand::Rebuild => {
+                options.initialize_storage().boxed().await?;
+                options.run_with_storage(Job(options.clone())).await??;
                 Ok(())
             }
         },

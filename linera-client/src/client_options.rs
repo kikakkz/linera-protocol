@@ -999,6 +999,9 @@ pub enum WalletCommand {
 
     /// Forgets the specified chain, including the associated key pair.
     ForgetChain { chain_id: ChainId },
+
+    /// Rebuild wallet database with exists configuration
+    Rebuild,
 }
 
 #[derive(Clone, clap::Parser)]
