@@ -106,7 +106,7 @@ where
             .unwrap()
             .unwrap();
         assert_eq!(sender.next_block_height(), BlockHeight::from(1));
-        assert!(sender.pending_block().is_none());
+        assert!(sender.pending_proposal().is_none());
         assert_eq!(
             sender.local_balance().await.unwrap(),
             Amount::from_millis(999)
@@ -235,7 +235,7 @@ where
         .await?;
     let cert = receiver.process_inbox().await?.0.pop().unwrap();
     {
-        let messages = &cert.executed_block().block.incoming_bundles;
+        let messages = &cert.block().body.incoming_bundles;
         // Both `Claim` messages were included in the block.
         assert_eq!(messages.len(), 2);
         // The first one was rejected.
@@ -276,7 +276,7 @@ where
     let new_owner = Owner::from(new_key_pair.public());
     let certificate = sender.rotate_key_pair(new_key_pair).await.unwrap().unwrap();
     assert_eq!(sender.next_block_height(), BlockHeight::from(1));
-    assert!(sender.pending_block().is_none());
+    assert!(sender.pending_proposal().is_none());
     assert_eq!(sender.identity().await.unwrap(), new_owner);
     assert_eq!(
         builder
@@ -317,7 +317,7 @@ where
         .unwrap()
         .unwrap();
     assert_eq!(sender.next_block_height(), BlockHeight::from(1));
-    assert!(sender.pending_block().is_none());
+    assert!(sender.pending_proposal().is_none());
     assert_matches!(
         sender.key_pair().await.map(|kp| KeyPair::public(&kp)), // KeyPair isn't Debug; using PublicKey.
         Err(ChainClientError::CannotFindKeyForChain(_))
@@ -361,7 +361,7 @@ where
         .unwrap()
         .unwrap();
     assert_eq!(sender.next_block_height(), BlockHeight::from(1));
-    assert!(sender.pending_block().is_none());
+    assert!(sender.pending_proposal().is_none());
     assert!(sender.key_pair().await.is_ok());
     assert_eq!(
         builder
@@ -478,7 +478,7 @@ where
         ..message_id
     };
     assert_matches!(
-        certificate.executed_block().messages()[0][sub_message_id.index as usize].message,
+        certificate.block().messages()[0][sub_message_id.index as usize].message,
         Message::System(SystemMessage::Subscribe { .. })
     );
     assert_eq!(
@@ -492,7 +492,7 @@ where
     );
 
     assert_eq!(sender.next_block_height(), BlockHeight::from(1));
-    assert!(sender.pending_block().is_none());
+    assert!(sender.pending_proposal().is_none());
     assert!(sender.key_pair().await.is_ok());
     // Make a client to try the new chain.
     let new_id = ChainId::child(message_id);
@@ -548,10 +548,10 @@ where
     assert_eq!(new_id, new_id2);
     assert_eq!(sender.next_block_height(), BlockHeight::from(1));
     assert_eq!(parent.next_block_height(), BlockHeight::from(1));
-    assert!(sender.pending_block().is_none());
+    assert!(sender.pending_proposal().is_none());
     assert!(sender.key_pair().await.is_ok());
     assert_matches!(
-        certificate.executed_block().block.operations[open_chain_message_id.index as usize],
+        certificate.block().body.operations[open_chain_message_id.index as usize],
         Operation::System(SystemOperation::OpenChain(_)),
         "Unexpected certificate value",
     );
@@ -627,10 +627,10 @@ where
     let new_id2 = ChainId::child(open_chain_message_id);
     assert_eq!(new_id, new_id2);
     assert_eq!(sender.next_block_height(), BlockHeight::from(2));
-    assert!(sender.pending_block().is_none());
+    assert!(sender.pending_proposal().is_none());
     assert!(sender.key_pair().await.is_ok());
     assert_matches!(
-        certificate.executed_block().block.operations[open_chain_message_id.index as usize],
+        certificate.block().body.operations[open_chain_message_id.index as usize],
         Operation::System(SystemOperation::OpenChain(_)),
         "Unexpected certificate value",
     );
@@ -694,7 +694,7 @@ where
         .unwrap()
         .unwrap();
     assert_eq!(sender.next_block_height(), BlockHeight::from(2));
-    assert!(sender.pending_block().is_none());
+    assert!(sender.pending_proposal().is_none());
     assert!(sender.key_pair().await.is_ok());
     // Make a client to try the new chain.
     let client = builder
@@ -737,12 +737,12 @@ where
 
     let certificate = client1.close_chain().await.unwrap().unwrap().unwrap();
     assert_matches!(
-        certificate.executed_block().block.operations[..],
+        certificate.block().body.operations[..],
         [Operation::System(SystemOperation::CloseChain)],
         "Unexpected certificate value",
     );
     assert_eq!(client1.next_block_height(), BlockHeight::from(1));
-    assert!(client1.pending_block().is_none());
+    assert!(client1.pending_proposal().is_none());
     assert!(client1.key_pair().await.is_ok());
     assert_eq!(
         builder
@@ -776,11 +776,11 @@ where
         .unwrap();
     client1.synchronize_from_validators().await.unwrap();
     let (certificates, _) = client1.process_inbox().await.unwrap();
-    let block = &certificates[0].executed_block().block;
-    assert!(block.operations.is_empty());
-    assert_eq!(block.incoming_bundles.len(), 1);
+    let block = certificates[0].block();
+    assert!(block.body.operations.is_empty());
+    assert_eq!(block.body.incoming_bundles.len(), 1);
     assert_matches!(
-        &block.incoming_bundles[0],
+        &block.body.incoming_bundles[0],
         IncomingBundle {
             origin: Origin { sender, medium: Medium::Direct },
             action: MessageAction::Reject,
@@ -838,7 +838,7 @@ where
         "unexpected result"
     );
     assert_eq!(sender.next_block_height(), BlockHeight::ZERO);
-    assert!(sender.pending_block().is_some());
+    assert!(sender.pending_proposal().is_some());
     assert_eq!(
         sender.local_balance().await.unwrap(),
         Amount::from_tokens(4)
@@ -881,7 +881,7 @@ where
         .unwrap();
 
     assert_eq!(client1.next_block_height(), BlockHeight::from(1));
-    assert!(client1.pending_block().is_none());
+    assert!(client1.pending_proposal().is_none());
     assert_eq!(client1.local_balance().await.unwrap(), Amount::ZERO);
     assert_eq!(
         client1.query_system_application(SystemQuery).await.unwrap(),
@@ -918,7 +918,7 @@ where
         .await
         .unwrap();
     assert_eq!(client2.next_block_height(), BlockHeight::from(1));
-    assert!(client2.pending_block().is_none());
+    assert!(client2.pending_proposal().is_none());
     assert_eq!(
         client2.local_balance().await.unwrap(),
         Amount::from_tokens(2)
@@ -967,7 +967,7 @@ where
         Amount::from_millis(999)
     );
     assert_eq!(client1.next_block_height(), BlockHeight::from(1));
-    assert!(client1.pending_block().is_none());
+    assert!(client1.pending_proposal().is_none());
     // The receiver doesn't know about the transfer.
     client2.process_inbox().await.unwrap();
     assert_eq!(client2.local_balance().await.unwrap(), Amount::ZERO);
@@ -1059,10 +1059,10 @@ where
     // Blocks were executed locally.
     assert_eq!(client1.local_balance().await.unwrap(), Amount::ONE);
     assert_eq!(client1.next_block_height(), BlockHeight::from(2));
-    assert!(client1.pending_block().is_none());
+    assert!(client1.pending_proposal().is_none());
     assert_eq!(client2.local_balance().await.unwrap(), Amount::ZERO);
     assert_eq!(client2.next_block_height(), BlockHeight::from(1));
-    assert!(client2.pending_block().is_none());
+    assert!(client2.pending_proposal().is_none());
     // Last one was not confirmed remotely, hence a conservative balance.
     assert_eq!(client2.local_balance().await.unwrap(), Amount::ZERO);
     // Let the receiver confirm in last resort.
@@ -1117,7 +1117,7 @@ where
     let committee = Committee::new(validators, ResourceControlPolicy::only_fuel());
     admin.stage_new_committee(committee).await.unwrap();
     assert_eq!(admin.next_block_height(), BlockHeight::from(3));
-    assert!(admin.pending_block().is_none());
+    assert!(admin.pending_proposal().is_none());
     assert!(admin.key_pair().await.is_ok());
     assert_eq!(admin.epoch().await.unwrap(), Epoch::from(2));
 
@@ -1313,9 +1313,7 @@ where
         .await
         .unwrap()
         .unwrap();
-    assert!(publish_certificate
-        .executed_block()
-        .requires_blob(&blob0_id));
+    assert!(publish_certificate.block().requires_blob(&blob0_id));
 
     // Validators goes back up
     builder.set_fault_type([2], FaultType::Honest).await;
@@ -1332,7 +1330,7 @@ where
         .unwrap();
     assert_eq!(certificate.round, Round::MultiLeader(0));
     // The blob is not new on this chain, so it is not required.
-    assert!(!certificate.executed_block().requires_blob(&blob0_id));
+    assert!(!certificate.block().requires_blob(&blob0_id));
 
     // Validators 0, 1, 2 now don't process validated block certificates. Client 2A tries to
     // commit a block that reads blob 0 and publishes blob 1. Client 2A will have that block
@@ -1357,7 +1355,7 @@ where
         .await;
 
     assert!(b0_result.is_err());
-    assert!(client2_a.pending_block().is_some());
+    assert!(client2_a.pending_proposal().is_some());
 
     for i in 0..=2 {
         let info = builder
@@ -1402,8 +1400,8 @@ where
     // Latest block should be the burn
     assert!(hashed_certificate_values[0]
         .inner()
-        .executed_block()
-        .block
+        .block()
+        .body
         .operations
         .contains(&Operation::System(SystemOperation::Transfer {
             owner: None,
@@ -1413,11 +1411,7 @@ where
 
     // Block before that should be b0
     assert_eq!(
-        hashed_certificate_values[1]
-            .inner()
-            .executed_block()
-            .block
-            .operations,
+        hashed_certificate_values[1].inner().block().body.operations,
         blob_0_1_operations,
     );
 
@@ -1472,9 +1466,7 @@ where
         .await
         .unwrap()
         .unwrap();
-    assert!(publish_certificate
-        .executed_block()
-        .requires_blob(&blob0_id));
+    assert!(publish_certificate.block().requires_blob(&blob0_id));
 
     builder
         .set_fault_type([0, 1, 2], FaultType::DontProcessValidated)
@@ -1496,7 +1488,7 @@ where
         .await;
 
     assert!(b0_result.is_err());
-    assert!(client2_a.pending_block().is_some());
+    assert!(client2_a.pending_proposal().is_some());
 
     for i in 0..=2 {
         let validator_manager = builder
@@ -1510,7 +1502,7 @@ where
                 .requested_proposed
                 .unwrap()
                 .content
-                .block
+                .proposal
                 .operations,
             blob_0_1_operations,
         );
@@ -1535,8 +1527,8 @@ where
     // Latest block should be the burn
     assert!(hashed_certificate_values[0]
         .inner()
-        .executed_block()
-        .block
+        .block()
+        .body
         .operations
         .contains(&Operation::System(SystemOperation::Transfer {
             owner: None,
@@ -1547,8 +1539,8 @@ where
     // Previous should be the `ChangeOwnership` operation, as the blob operations shouldn't be executed here.
     assert!(hashed_certificate_values[1]
         .inner()
-        .executed_block()
-        .block
+        .block()
+        .body
         .operations
         .contains(&owner_change_op));
     Ok(())
@@ -1614,9 +1606,7 @@ where
         .await
         .unwrap()
         .unwrap();
-    assert!(publish_certificate0
-        .executed_block()
-        .requires_blob(&blob0_id));
+    assert!(publish_certificate0.block().requires_blob(&blob0_id));
 
     let blob2_bytes = b"blob2".to_vec();
     let blob2_id = Blob::new(BlobContent::new_data(blob2_bytes.clone())).id();
@@ -1628,9 +1618,7 @@ where
         .await
         .unwrap()
         .unwrap();
-    assert!(publish_certificate2
-        .executed_block()
-        .requires_blob(&blob2_id));
+    assert!(publish_certificate2.block().requires_blob(&blob2_id));
 
     builder
         .set_fault_type([0, 1], FaultType::DontProcessValidated)
@@ -1655,7 +1643,7 @@ where
         .await;
 
     assert!(b0_result.is_err());
-    assert!(client3_a.pending_block().is_some());
+    assert!(client3_a.pending_proposal().is_some());
 
     let manager = client3_a
         .chain_info_with_manager_values()
@@ -1684,7 +1672,7 @@ where
                 .requested_proposed
                 .unwrap()
                 .content
-                .block
+                .proposal
                 .operations,
             blob_0_1_operations,
         );
@@ -1694,8 +1682,8 @@ where
                 validator_manager
                     .requested_locked
                     .unwrap()
-                    .executed_block()
-                    .block
+                    .block()
+                    .body
                     .operations,
                 blob_0_1_operations,
             );
@@ -1751,7 +1739,7 @@ where
             .requested_proposed
             .unwrap()
             .content
-            .block
+            .proposal
             .operations,
         blob_2_3_operations,
     );
@@ -1759,8 +1747,8 @@ where
         validator_manager
             .requested_locked
             .unwrap()
-            .executed_block()
-            .block
+            .block()
+            .body
             .operations,
         blob_2_3_operations,
     );
@@ -1783,8 +1771,8 @@ where
     // Latest block should be the burn
     assert!(hashed_certificate_values[0]
         .inner()
-        .executed_block()
-        .block
+        .block()
+        .body
         .operations
         .contains(&Operation::System(SystemOperation::Transfer {
             owner: None,
@@ -1794,19 +1782,15 @@ where
 
     // Block before that should be b1
     assert_eq!(
-        hashed_certificate_values[1]
-            .inner()
-            .executed_block()
-            .block
-            .operations,
+        hashed_certificate_values[1].inner().block().body.operations,
         blob_2_3_operations,
     );
 
     // Previous should be the `ChangeOwnership` operation
     assert!(hashed_certificate_values[2]
         .inner()
-        .executed_block()
-        .block
+        .block()
+        .body
         .operations
         .contains(&owner_change_op));
     Ok(())
@@ -1984,7 +1968,7 @@ where
     assert_eq!(manager.current_round, Round::MultiLeader(0));
     let result = client1.publish_data_blob(b"blob1".to_vec()).await;
     assert!(result.is_err());
-    assert!(client1.pending_block().is_some());
+    assert!(client1.pending_proposal().is_some());
     assert!(!client1.pending_blobs().is_empty());
 
     // Finally, the validators are online and honest again.
@@ -1999,7 +1983,7 @@ where
         manager.requested_locked.unwrap().round,
         Round::MultiLeader(1)
     );
-    assert!(client0.pending_block().is_some());
+    assert!(client0.pending_proposal().is_some());
 
     // Client 0 now only tries to burn 1 token. Before that, they automatically finalize the
     // pending block, which publishes the blob, leaving 10 - 1 = 9.
@@ -2010,7 +1994,7 @@ where
         client0.local_balance().await.unwrap(),
         Amount::from_tokens(9)
     );
-    assert!(client0.pending_block().is_none());
+    assert!(client0.pending_proposal().is_none());
 
     // Burn another token so Client 1 sees that the blob is already published
     client1.prepare_chain().await.unwrap();
@@ -2021,7 +2005,7 @@ where
         client1.local_balance().await.unwrap(),
         Amount::from_tokens(8)
     );
-    assert!(client1.pending_block().is_none());
+    assert!(client1.pending_proposal().is_none());
     assert!(client1.pending_blobs().is_empty());
     Ok(())
 }
@@ -2153,7 +2137,7 @@ where
         Round::MultiLeader(0)
     );
     assert_eq!(manager.current_round, Round::MultiLeader(1));
-    assert!(client1.pending_block().is_some());
+    assert!(client1.pending_proposal().is_some());
     client1.burn(None, Amount::from_tokens(4)).await.unwrap();
 
     // Burning 3 and 4 tokens got finalized; the pending 2 tokens got skipped.
@@ -2282,8 +2266,8 @@ where
         .unwrap();
     // This read a new blob, so it cannot be a fast block.
     assert_eq!(certificate.round, Round::MultiLeader(0));
-    let executed_block = certificate.executed_block();
-    assert_eq!(executed_block.block.incoming_bundles.len(), 1);
+    let executed_block = certificate.block();
+    assert_eq!(executed_block.body.incoming_bundles.len(), 1);
     assert_eq!(executed_block.required_blob_ids().len(), 1);
 
     // This will go way over the limit, because of the different overheads.
